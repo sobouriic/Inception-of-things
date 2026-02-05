@@ -1,6 +1,8 @@
 Vagrant.configure("2") do |config|
-
-  config.vm.box = "centos/7"
+  # Latest stable CentOS line (CentOS Stream 9) for both VMs.
+  config.vm.box = "generic/centos9s"
+  config.vm.box_check_update = false
+  kvm_available = File.exist?("/dev/kvm")
 
 
   # SERVER MACHINE
@@ -13,6 +15,14 @@ Vagrant.configure("2") do |config|
       vb.name = "sobouricS"
       vb.memory = 1024
       vb.cpus = 1
+    end
+
+    server.vm.provider "libvirt" do |lv|
+      lv.memory = 1024
+      lv.cpus = 1
+      # Use KVM when available, otherwise fall back to QEMU for portability.
+      lv.driver = kvm_available ? "kvm" : "qemu"
+      lv.machine_type = "q35"
     end
 
     server.vm.provision "shell", path: "scripts/install_k3s_server.sh"
@@ -28,6 +38,14 @@ Vagrant.configure("2") do |config|
       vb.name = "sobouricSW"
       vb.memory = 1024
       vb.cpus = 1
+    end
+
+    worker.vm.provider "libvirt" do |lv|
+      lv.memory = 1024
+      lv.cpus = 1
+      # Use KVM when available, otherwise fall back to QEMU for portability.
+      lv.driver = kvm_available ? "kvm" : "qemu"
+      lv.machine_type = "q35"
     end
 
     worker.vm.provision "shell", path: "scripts/install_k3s_agent.sh"

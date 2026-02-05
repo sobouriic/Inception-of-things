@@ -30,12 +30,14 @@ echo "❌ VirtualBox not available"
 
 echo
 echo "🔍 Checking libvirt..."
-if systemctl list-unit-files | grep -q libvirtd; then
-  echo "✅ libvirt installed"
+if systemctl list-unit-files | grep -q libvirtd \
+  && command -v virsh >/dev/null 2>&1 \
+  && command -v qemu-system-x86_64 >/dev/null 2>&1; then
+  echo "✅ libvirt + qemu detected"
 else
   echo "📦 Installing libvirt stack..."
   sudo apt update
-  sudo apt install -y qemu-kvm libvirt-daemon-system libvirt-clients virt-manager
+  sudo apt install -y qemu-system-x86 qemu-kvm libvirt-daemon-system libvirt-clients virt-manager
 fi
 
 echo
