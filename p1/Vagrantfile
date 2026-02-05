@@ -1,8 +1,15 @@
 Vagrant.configure("2") do |config|
-  # Latest stable CentOS line (CentOS Stream 9) for both VMs.
-  config.vm.box = "generic/centos9s"
+
+  if ENV["VAGRANT_DEFAULT_PROVIDER"].to_s.empty?
+    if system("command -v VBoxManage >/dev/null 2>&1")
+      ENV["VAGRANT_DEFAULT_PROVIDER"] = "virtualbox"
+    elsif Vagrant.has_plugin?("vagrant-libvirt")
+      ENV["VAGRANT_DEFAULT_PROVIDER"] = "libvirt"
+    end
+  end
+
+  config.vm.box = "centos/7"
   config.vm.box_check_update = false
-  # QEMU (without KVM) boots much slower on some hosts.
   config.vm.boot_timeout = 1200
   config.ssh.connect_timeout = 30
   kvm_available = File.exist?("/dev/kvm")
@@ -23,7 +30,6 @@ Vagrant.configure("2") do |config|
     server.vm.provider "libvirt" do |lv|
       lv.memory = 1024
       lv.cpus = 1
-      # Use KVM when available, otherwise fall back to QEMU for portability.
       lv.driver = kvm_available ? "kvm" : "qemu"
       lv.machine_type = "q35"
     end
@@ -46,7 +52,6 @@ Vagrant.configure("2") do |config|
     worker.vm.provider "libvirt" do |lv|
       lv.memory = 1024
       lv.cpus = 1
-      # Use KVM when available, otherwise fall back to QEMU for portability.
       lv.driver = kvm_available ? "kvm" : "qemu"
       lv.machine_type = "q35"
     end
