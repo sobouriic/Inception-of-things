@@ -46,6 +46,16 @@ sudo systemctl enable libvirtd
 sudo systemctl start libvirtd
 
 echo
+echo "🌐 Ensuring libvirt default network is active..."
+if sudo virsh net-info default >/dev/null 2>&1; then
+  sudo virsh net-start default >/dev/null 2>&1 || true
+  sudo virsh net-autostart default
+  echo "✅ libvirt default network ready"
+else
+  echo "⚠️ libvirt network 'default' not found; create it if Vagrant cannot get VM IP"
+fi
+
+echo
 echo "👤 Adding user to libvirt & kvm groups..."
 sudo usermod -aG libvirt $USER
 sudo usermod -aG kvm $USER
