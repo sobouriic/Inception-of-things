@@ -1,0 +1,30 @@
+                    ********************
+                    *part1:K3s +Vagrant*
+                    ********************
+1-what is Vagrant:
+Vagrant is an open-source tool that helps us to automate the creation and management of Virtual Machines.
+
+2-What Vagrant actually does?  
+its a A DevOps automation layer like a Docker Compose, but for virtual machines.
+
+    1-You write a Vagrantfile
+
+    2-Vagrant:
+
+        -Talks to a provider (VirtualBox, VMware, libvirt…)
+
+        -Creates VMs
+
+        -Configures networking
+
+        -Runs provisioning scripts
+
+3-Why TWO machines (Server + ServerWorker)
+A Kubernetes cluster is:A control plane One or more workers
+
+In Part 1:
+
+Server → control plane
+
+ServerWorker → worker node
+

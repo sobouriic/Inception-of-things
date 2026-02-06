@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-K3S_SHARED_TOKEN="inception-iot-token"
+TOKEN_FILE="/vagrant/confs/k3s_token"
 SERVER_IP_DEFAULT="192.168.56.110"
 SERVER_IP=""
 
@@ -44,6 +44,24 @@ echo "[AGENT] Waiting for K3s API on ${SERVER_IP}:6443..."
 until timeout 1 bash -c "cat < /dev/null > /dev/tcp/${SERVER_IP}/6443" 2>/dev/null; do
   sleep 2
 done
+
+if [ -n "${K3S_SHARED_TOKEN:-}" ]; then
+  echo "[AGENT] Using K3S_SHARED_TOKEN from environment."
+else
+  echo "[AGENT] Waiting for K3s token..."
+  for _ in $(seq 1 150); do
+    if [ -f "${TOKEN_FILE}" ]; then
+      K3S_SHARED_TOKEN="$(cat "${TOKEN_FILE}")"
+      break
+    fi
+    sleep 2
+  done
+fi
+
+if [ -z "${K3S_SHARED_TOKEN}" ]; then
+  echo "[AGENT] ERROR: K3s token not found. Ensure ${TOKEN_FILE} exists or set K3S_SHARED_TOKEN."
+  exit 1
+fi
 
 echo "[AGENT] Installing K3s agent..."
 curl -sfL https://get.k3s.io | \
