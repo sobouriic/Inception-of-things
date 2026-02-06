@@ -63,30 +63,6 @@ vagrant ssh sobouricS -c "sudo /usr/local/bin/kubectl --kubeconfig /etc/rancher/
 
 Expected: 2 nodes in `Ready` state (`sobourics` and `sobouricsw`).
 
-## Why `k get nodes` failed
-
-`k` is usually a shell alias for `kubectl`.  
-Your VM does not define this alias by default, so `k` is not found.
-
-Use:
-
-```bash
-kubectl get nodes -o wide
-```
-
-or full path (recommended in this project):
-
-```bash
-sudo /usr/local/bin/kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes -o wide
-```
-
-If you want alias `k`:
-
-```bash
-echo "alias k=kubectl" >> ~/.bashrc
-source ~/.bashrc
-```
-
 ## Troubleshooting
 
 - Vagrant lock error:
