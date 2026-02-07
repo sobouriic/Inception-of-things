@@ -3,15 +3,13 @@ set -e
 
 MACHINES=("sobouricS" "sobouricSW")
 
-echo "🧹 Cleaning Vagrant + libvirt state..."
+echo " Cleaning Vagrant + libvirt state..."
 
-# Step 1: Try normal vagrant destroy
 if command -v vagrant &>/dev/null; then
   echo "▶ Trying: vagrant destroy -f"
   vagrant destroy -f || true
 fi
 
-# Step 2: Clean libvirt domains manually
 if command -v virsh &>/dev/null; then
   for VM in "${MACHINES[@]}"; do
     if virsh dominfo "$VM" &>/dev/null; then
@@ -28,7 +26,6 @@ if command -v virsh &>/dev/null; then
   done
 fi
 
-# Step 3: Remove local vagrant metadata
 echo "🗑 Removing .vagrant directory"
 rm -rf .vagrant
 
