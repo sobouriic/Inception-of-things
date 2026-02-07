@@ -42,24 +42,17 @@ fi
 echo "[SERVER] Installing K3s server..."
 curl -sfL https://get.k3s.io | \
   K3S_TOKEN="${K3S_SHARED_TOKEN}" \
-  INSTALL_K3S_EXEC="server --node-ip=192.168.56.110 --advertise-address=192.168.56.110 --tls-san=192.168.56.110" \
+  INSTALL_K3S_EXEC="server --node-ip=192.168.56.110 --advertise-address=192.168.56.110 --tls-san=192.168.56.110 --disable traefik --disable metrics-server --disable servicelb" \
   sh -
 
-# Ensure the token file exists for the agent, even if /vagrant was not ready earlier.
-if [ ! -f "${TOKEN_FILE}" ]; then
-  if [ -n "${K3S_SHARED_TOKEN:-}" ]; then
-    umask 077
-    echo "${K3S_SHARED_TOKEN}" > "${TOKEN_FILE}"
-    chmod 600 "${TOKEN_FILE}"
-    umask 022
-    echo "[SERVER] Wrote token to ${TOKEN_FILE}."
-  elif [ -f /var/lib/rancher/k3s/server/node-token ]; then
-    umask 077
-    cp /var/lib/rancher/k3s/server/node-token "${TOKEN_FILE}"
-    chmod 600 "${TOKEN_FILE}"
-    umask 022
-    echo "[SERVER] Wrote node-token to ${TOKEN_FILE}."
-  fi
+if [ -f /var/lib/rancher/k3s/server/node-token ]; then
+  umask 077
+  cp /var/lib/rancher/k3s/server/node-token "${TOKEN_FILE}"
+  chmod 600 "${TOKEN_FILE}"
+  umask 022
+  echo "[SERVER] Wrote node-token to ${TOKEN_FILE}."
+else
+  echo "[SERVER] WARNING: node-token not found; token file not updated."
 fi
 
 SERVER_IP="$(ip -4 -o addr show scope global | awk '/192\\.168\\.56\\./ {split($4,a,"/"); print a[1]; found=1; exit} END {if (!found) {split($4,a,"/"); print a[1]}}')"

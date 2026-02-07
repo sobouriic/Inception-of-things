@@ -22,12 +22,12 @@ else
 fi
 
 echo "[AGENT] Waiting for server IP metadata..."
-for _ in $(seq 1 150); do
+for _ in $(seq 1 30); do
   if [ -f /vagrant/server_ip ]; then
     SERVER_IP="$(cat /vagrant/server_ip)"
     break
   fi
-  sleep 2
+  sleep 1
 done
 
 if [ -z "${SERVER_IP}" ] && [ -n "${K3S_SERVER_IP:-}" ]; then
@@ -41,8 +41,18 @@ fi
 echo "[AGENT] Using server IP: ${SERVER_IP}"
 
 echo "[AGENT] Waiting for K3s API on ${SERVER_IP}:6443..."
+API_WAIT_SECONDS=300
+API_WAIT_STEP=2
+API_WAIT_MAX=$((API_WAIT_SECONDS / API_WAIT_STEP))
+API_WAIT_COUNT=0
 until timeout 1 bash -c "cat < /dev/null > /dev/tcp/${SERVER_IP}/6443" 2>/dev/null; do
-  sleep 2
+  API_WAIT_COUNT=$((API_WAIT_COUNT + 1))
+  if [ "${API_WAIT_COUNT}" -ge "${API_WAIT_MAX}" ]; then
+    echo "[AGENT] ERROR: K3s API not reachable at ${SERVER_IP}:6443 after ${API_WAIT_SECONDS}s."
+    echo "[AGENT] Check server VM status and network (host-only IP)."
+    exit 1
+  fi
+  sleep "${API_WAIT_STEP}"
 done
 
 if [ -n "${K3S_SHARED_TOKEN:-}" ]; then
@@ -68,7 +78,10 @@ curl -sfL https://get.k3s.io | \
   K3S_URL="https://${SERVER_IP}:6443" \
   K3S_TOKEN="${K3S_SHARED_TOKEN}" \
   INSTALL_K3S_EXEC="agent --node-ip=192.168.56.111" \
+  INSTALL_K3S_SKIP_START="true" \
   sh -
+
+systemctl start --no-block k3s-agent || true
 
 if ! command -v kubectl >/dev/null 2>&1; then
   echo "[AGENT] Installing kubectl..."

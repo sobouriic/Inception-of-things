@@ -15,7 +15,6 @@ Vagrant.configure("2") do |config|
   config.ssh.connect_timeout = 30
   kvm_available = File.exist?("/dev/kvm")
 
-  # Generate a shared token on the host so both VMs get the same value.
   confs_dir = File.join(File.dirname(__FILE__), "confs")
   token_file = File.join(confs_dir, "k3s_token")
   Dir.mkdir(confs_dir) unless Dir.exist?(confs_dir)
