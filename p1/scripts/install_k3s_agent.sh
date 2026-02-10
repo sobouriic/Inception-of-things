@@ -5,21 +5,11 @@ TOKEN_FILE="/vagrant/confs/k3s_token"
 SERVER_IP_DEFAULT="192.168.56.110"
 SERVER_IP=""
 
-if [ -f /etc/centos-release ] && grep -q "CentOS Linux release 7" /etc/centos-release; then
-  echo "[AGENT] Fixing CentOS 7 repositories..."
-  sed -i 's|^mirrorlist=|#mirrorlist=|g' /etc/yum.repos.d/CentOS-Base.repo
-  sed -i 's|^#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-Base.repo
-fi
+mkdir -p "$(dirname "${TOKEN_FILE}")"
 
 echo "[AGENT] Preparing system packages..."
-if command -v dnf >/dev/null 2>&1; then
-  dnf makecache
-  dnf install -y curl iproute net-tools
-else
-  yum clean all
-  yum makecache
-  yum install -y curl iproute net-tools
-fi
+dnf makecache
+dnf install -y curl iproute net-tools
 
 echo "[AGENT] Waiting for server IP metadata..."
 for _ in $(seq 1 30); do
@@ -82,12 +72,5 @@ curl -sfL https://get.k3s.io | \
   sh -
 
 systemctl start --no-block k3s-agent || true
-
-if ! command -v kubectl >/dev/null 2>&1; then
-  echo "[AGENT] Installing kubectl..."
-  KUBECTL_VERSION="$(curl -L -s https://dl.k8s.io/release/stable.txt)"
-  curl -L -o /usr/local/bin/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
-  chmod +x /usr/local/bin/kubectl
-fi
 
 echo "[AGENT] K3s agent installed"

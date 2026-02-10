@@ -4,7 +4,7 @@ This folder sets up 2 VMs with Vagrant:
 - `sobouricS` (server/control-plane) -> `192.168.56.110`
 - `sobouricSW` (agent/worker) -> `192.168.56.111`
 
-Both machines run CentOS 7 and are provisioned with K3s.
+Both machines run CentOS Stream 9 and are provisioned with K3s.
 
 ## Files
 
