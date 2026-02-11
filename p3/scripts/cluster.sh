@@ -2,6 +2,8 @@
 set -euo pipefail
 
 CLUSTER_NAME="iot-cluster"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "${SCRIPT_DIR}")"
 
 echo "[P3] Creating cluster..."
 if k3d cluster list | awk '{print $1}' | grep -qx "${CLUSTER_NAME}"; then
@@ -11,7 +13,7 @@ else
 fi
 
 echo "[P3] Creating namespaces..."
-kubectl apply -f confs/namespace.yaml
+kubectl apply -f "${PROJECT_DIR}/confs/namespace.yaml"
 
 echo "[P3] Installing Argo CD..."
 kubectl apply --server-side --force-conflicts -n argocd \
@@ -19,7 +21,7 @@ kubectl apply --server-side --force-conflicts -n argocd \
 kubectl rollout status deployment/argocd-server -n argocd --timeout=300s
 
 echo "[P3] Applying Argo CD Application..."
-kubectl apply -f confs/application.yaml
+kubectl apply -f "${PROJECT_DIR}/confs/application.yaml"
 
 echo "[P3] Setup complete."
 echo "[P3] Argo CD UI: kubectl port-forward svc/argocd-server -n argocd 8080:443"

@@ -7,8 +7,8 @@ spec:
   project: default
   source:
     repoURL: https://github.com/sobouriic/sobouric-inception.git
-    targetRevision: HEAD
-    path: p3/confs/app
+    targetRevision: main
+    path: .
   destination:
     server: https://kubernetes.default.svc
     namespace: dev

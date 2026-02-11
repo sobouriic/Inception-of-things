@@ -28,3 +28,18 @@ Server → control plane
 
 ServerWorker → worker node
 
+
+4-what is kubernetes:
+tool for managing containers (auto scale )
+
+5-kubernetes architecture:
+-control plan :manages clusters and resources
+comtains:
+kubeapiserver, etcd, kubeschedular,kubwcontrolmanager,
+6- what is pod:
+one or more container 
+if a node dies node controler detects replicatset , self healing 
+
+7-diff between k3s and k3d ?
+k3s ===> deploys a vm based kubernetes cluster
+k3d===> deploys docker based k3s cluster(k3s inside docker)
