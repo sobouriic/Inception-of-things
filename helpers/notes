@@ -43,3 +43,30 @@ if a node dies node controler detects replicatset , self healing
 7-diff between k3s and k3d ?
 k3s ===> deploys a vm based kubernetes cluster
 k3d===> deploys docker based k3s cluster(k3s inside docker)
+
+
+
+stepsof part 3:
+Install K3d
+
+Install Docker
+
+Create two namespaces:
+
+argocd
+
+dev
+
+Create a PUBLIC GitHub repo (with login in name)
+
+Push configuration files there
+
+Use Argo CD to deploy automatically
+
+Use an image with two tags: v1 and v2
+
+Update GitHub → verify app updates automatically
+
+Show synchronization in Argo CD
+
+Show curl http://localhost:8888 returns v1 then v2

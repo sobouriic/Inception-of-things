@@ -25,10 +25,13 @@ echo "[P3] Installing k3d..."
 curl -fsSL https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
 
 echo "[P3] Installing Argo CD CLI (optional but useful)..."
-ARGOCD_VERSION="$(curl -fsSL https://api.github.com/repos/argoproj/argo-cd/releases/latest | grep '"tag_name"' | head -n1 | cut -d '"' -f 4)"
-curl -fsSLo /tmp/argocd "https://github.com/argoproj/argo-cd/releases/download/${ARGOCD_VERSION}/argocd-linux-amd64"
-sudo install -m 0755 /tmp/argocd /usr/local/bin/argocd
-rm -f /tmp/argocd
+if curl -fsSLo /tmp/argocd "https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64"; then
+  sudo install -m 0755 /tmp/argocd /usr/local/bin/argocd
+  rm -f /tmp/argocd
+else
+  echo "[P3] Warning: could not download argocd CLI (GitHub rate limit/network)."
+  echo "[P3] Continuing without argocd CLI; kubectl-based workflow is unaffected."
+fi
 
 echo "[P3] Installation complete."
 echo "[P3] Open a new shell or run: newgrp docker"
