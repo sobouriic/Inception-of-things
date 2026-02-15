@@ -13,7 +13,7 @@ echo "[P3] Applying Argo CD Application..."
 kubectl apply -f "${PROJECT_DIR}/confs/application.yaml"
 
 echo "[P3] Forcing Argo CD refresh..."
-kubectl annotate application dev-app -n argocd argocd.argoproj.io/refresh=hard --overwrite
+kubectl annotate application development -n argocd argocd.argoproj.io/refresh=hard --overwrite
 
 echo "[P3] Running verification checks..."
 bash "${SCRIPT_DIR}/verify.sh"

@@ -12,7 +12,7 @@ if k3d cluster list | grep -q "^${CLUSTER_NAME}\b"; then
     echo "[P3 CLEAN] Cluster ${CLUSTER_NAME} exists."
 
     echo "[P3 CLEAN] Deleting Argo CD Application (if exists)..."
-    kubectl delete application dev-app -n argocd --ignore-not-found=true || true
+    kubectl delete application development -n argocd --ignore-not-found=true || true
 
     echo "[P3 CLEAN] Deleting namespaces..."
     kubectl delete namespace dev --ignore-not-found=true || true

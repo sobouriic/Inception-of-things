@@ -10,7 +10,6 @@ if ! kubectl get ns argocd >/dev/null 2>&1; then
   exit 1
 fi
 
-# Check if argocd-server pod is running
 if ! kubectl get pods -n argocd | grep -q argocd-server; then
   echo "[ERROR] Argo CD server not running."
   exit 1

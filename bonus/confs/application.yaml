@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: development
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: 'http://gitlab-webservice-default.gitlab.svc:8181/root/sobouric.git'
+    targetRevision: HEAD
+    path: .
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: dev
+
+  syncPolicy:
+    syncOptions: #by default, ArgoCD does not create the destination namespace if it does not exist
+      - CreateNamespace=true
+
+    automated: #enable auto sync
+      selfHeal: true #by default, it will  try to revert any out-of-sync resources to the desired state
+      prune: true #it will delete any resources that are no longer defined in the Git repository
