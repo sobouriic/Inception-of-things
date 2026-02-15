@@ -5,7 +5,6 @@ echo "=============================="
 echo "[P3] Launching Argo CD UI"
 echo "=============================="
 
-# Check if Argo CD namespace exists
 if ! kubectl get ns argocd >/dev/null 2>&1; then
   echo "[ERROR] argocd namespace not found. Run cluster setup first."
   exit 1
