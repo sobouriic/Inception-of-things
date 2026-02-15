@@ -74,24 +74,23 @@ Expected: 2 nodes in `Ready` state (`sobourics` and `sobouricsw`).
 
 # Part 3 (K3d + Argo CD)
 
-## What to push to public GitHub repo
+This part runs a local K3d cluster, installs Argo CD, and deploys the app in namespace `dev`.
 
-Push the whole `p3` folder, including:
+## Repository content (Part 3)
 
-- `p3/confs/app/deployment.yaml`
-- `p3/confs/app/service.yaml`
-- `p3/confs/application.yaml`
+- `p3/confs/deployment.yaml`
+- `p3/confs/service.yaml`
 - `p3/confs/namespace.yaml`
+- `p3/confs/application.yaml`
 - `p3/scripts/install.sh`
 - `p3/scripts/cluster.sh`
+- `p3/scripts/run_all.sh`
 - `p3/scripts/verify.sh`
+- `p3/scripts/argocd_ui.sh`
 
-Argo CD is configured to deploy from:
+Argo CD source is defined in `p3/confs/application.yaml`.
 
-- repo: `https://github.com/sobouriic/sobouric-inception.git`
-- path: `p3/confs/app`
-
-## Run from beginning
+## Run from scratch
 
 ```bash
 cd ~/Desktop/Inception-of-things/p3
@@ -101,16 +100,22 @@ bash scripts/cluster.sh
 bash scripts/verify.sh
 ```
 
-Open UI:
+Shortcut:
+
+```bash
+cd ~/Desktop/Inception-of-things/p3
+bash scripts/run_all.sh
+```
+
+## Access Argo CD UI
 
 ```bash
 kubectl port-forward svc/argocd-server -n argocd 8080:443
 ```
 
-Then browse to `https://localhost:8080` and login with:
-
-- user: `admin`
-- password from:
+Open `https://localhost:8080` and login with:
+- username: `admin`
+- password:
 
 ```bash
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
@@ -118,63 +123,25 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.pas
 
 ## Mandatory v1 -> v2 demo
 
-Edit image tag in `p3/confs/app/deployment.yaml`:
-
-- from `wil42/playground:v1`
-- to `wil42/playground:v2`
-
-Then push:
+1. Update the app image tag in `p3/confs/deployment.yaml`:
+   - from `wil42/playground:v1`
+   - to `wil42/playground:v2`
+2. Commit and push:
 
 ```bash
 cd ~/Desktop/Inception-of-things
-git add p3/confs/app/deployment.yaml
+git add p3/confs/deployment.yaml
 git commit -m "p3: switch app to v2"
 git push
-
 ```
 
-Argo CD auto-syncs, then verify:
+3. Verify sync and app response:
 
 ```bash
-# Bonus - Local GitLab + Argo CD
-
-Goal: keep the Part 3 flow, but use a local GitLab repository as Argo CD source.
-
-## Concept
-
-- Part 3 proves GitOps with GitHub.
-- Bonus proves the same GitOps flow with local GitLab.
-- Argo CD must sync from local GitLab, then update app from v1 to v2 after a commit/push.
-
-## Files
-
-- `scripts/install.sh`: install Helm and helpers.
-- `scripts/setup_gitlab.sh`: install local GitLab in namespace `gitlab` via Helm.
-- `scripts/switch_argocd_to_gitlab.sh`: configure Argo CD repo credentials and apply GitLab-based Application.
-- `scripts/verify.sh`: checks for bonus.
-- `confs/gitlab-namespace.yaml`: dedicated namespace `gitlab`.
-- `confs/application-gitlab-template.yaml`: Argo CD Application template using GitLab repo URL.
-
-## Run order
-
-1. Ensure mandatory Part 3 works first.
-2. Install bonus tools:
-   - `bash bonus/scripts/install.sh`
-3. Install GitLab in cluster:
-   - `bash bonus/scripts/setup_gitlab.sh`
-4. In GitLab UI, create a project and push your `deployment.yaml` + `service.yaml`.
-5. Create a GitLab access token (scope: `read_repository`).
-6. Switch Argo CD source from GitHub to GitLab:
-   - `bash bonus/scripts/switch_argocd_to_gitlab.sh <gitlab_repo_url> <gitlab_username> <token>`
-7. Verify:
-   - `bash bonus/scripts/verify.sh`
-8. Demo v1 -> v2:
-   - update image tag in GitLab repo, commit/push.
-   - verify app updates in Argo CD and `curl http://localhost:8888/`.
-
-
+kubectl get applications -n argocd -o wide
 curl http://localhost:8888/
 ```
+
 # Bonus - Local GitLab + Argo CD
 
 Goal: keep the Part 3 flow, but use a local GitLab repository as Argo CD source.
@@ -183,30 +150,48 @@ Goal: keep the Part 3 flow, but use a local GitLab repository as Argo CD source.
 
 - Part 3 proves GitOps with GitHub.
 - Bonus proves the same GitOps flow with local GitLab.
-- Argo CD must sync from local GitLab, then update app from v1 to v2 after a commit/push.
+- Argo CD must sync from local GitLab, then apply changes (v1 -> v2) after commit/push.
 
-## Files
+## Bonus files
 
-- `scripts/install.sh`: install Helm and helpers.
-- `scripts/setup_gitlab.sh`: install local GitLab in namespace `gitlab` via Helm.
-- `scripts/switch_argocd_to_gitlab.sh`: configure Argo CD repo credentials and apply GitLab-based Application.
-- `scripts/verify.sh`: checks for bonus.
-- `confs/gitlab-namespace.yaml`: dedicated namespace `gitlab`.
-- `confs/application-gitlab-template.yaml`: Argo CD Application template using GitLab repo URL.
+- `bonus/scripts/install.sh`: installs Helm and required tools.
+- `bonus/scripts/setup_gitlab.sh`: installs local GitLab in namespace `gitlab`.
+- `bonus/scripts/switch_argocd_to_gitlab.sh`: registers repo credentials and switches Argo CD source.
+- `bonus/scripts/verify.sh`: runs bonus checks.
+- `bonus/confs/gitlab-namespace.yaml`: namespace for GitLab.
+- `bonus/confs/application-gitlab-template.yaml`: Argo CD Application template for GitLab source.
 
 ## Run order
 
-1. Ensure mandatory Part 3 works first.
+1. Complete Part 3 first.
 2. Install bonus tools:
-   - `bash bonus/scripts/install.sh`
-3. Install GitLab in cluster:
-   - `bash bonus/scripts/setup_gitlab.sh`
-4. In GitLab UI, create a project and push your `deployment.yaml` + `service.yaml`.
-5. Create a GitLab access token (scope: `read_repository`).
-6. Switch Argo CD source from GitHub to GitLab:
-   - `bash bonus/scripts/switch_argocd_to_gitlab.sh <gitlab_repo_url> <gitlab_username> <token>`
+
+```bash
+bash bonus/scripts/install.sh
+```
+
+3. Install local GitLab:
+
+```bash
+bash bonus/scripts/setup_gitlab.sh
+```
+
+4. In GitLab UI, create a project and push your app manifests.
+5. Create a GitLab token with `read_repository` scope.
+6. Switch Argo CD to GitLab:
+
+```bash
+bash bonus/scripts/switch_argocd_to_gitlab.sh <gitlab_repo_url> <gitlab_username> <gitlab_token>
+```
+
 7. Verify:
-   - `bash bonus/scripts/verify.sh`
-8. Demo v1 -> v2:
-   - update image tag in GitLab repo, commit/push.
-   - verify app updates in Argo CD and `curl http://localhost:8888/`.
+
+```bash
+bash bonus/scripts/verify.sh
+curl http://localhost:8888/
+```
+
+8. Demo update:
+- change image tag `v1 -> v2` in the GitLab repo
+- commit/push
+- confirm Argo CD syncs and app is updated
