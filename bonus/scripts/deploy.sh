@@ -16,10 +16,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BONUS_DIR="$(dirname "${SCRIPT_DIR}")"
 REPO_ROOT="$(dirname "${BONUS_DIR}")"
 CONF_DIR="${BONUS_DIR}/confs"
+GITLAB_VALUES_FILE="${GITLAB_VALUES_FILE:-${CONF_DIR}/gitlab-values-light.yaml}"
+GITLAB_LOCAL_PORT="${GITLAB_LOCAL_PORT:-8083}"
+ARGOCD_LOCAL_PORT="${ARGOCD_LOCAL_PORT:-8080}"
+FORCE_ARGOCD_APPLY="${FORCE_ARGOCD_APPLY:-false}"
+FORCE_GITLAB_UPGRADE="${FORCE_GITLAB_UPGRADE:-false}"
 GITLAB_PROJECT="sobouric"
 GITLAB_USER="root"
 GIT_USER_NAME="sobouric"
-GIT_USER_EMAIL="${GIT_USER_EMAIL:-sobouric@student.42.fr}"
+GIT_USER_EMAIL="${GIT_USER_EMAIL:-socarlett03@gmail.com}"
 MIN_FREE_GB="${MIN_FREE_GB:-12}"
 
 create_namespace_if_missing() {
@@ -70,6 +75,63 @@ stop_port_forward_if_running() {
   fi
 }
 
+free_local_port_if_busy() {
+  local port="$1"
+  local pids
+
+  pids="$(ss -ltnp "sport = :${port}" 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | sort -u)"
+  if [ -n "${pids}" ]; then
+    log_warn "Port ${port} is busy, stopping stale local listeners (PID: ${pids})"
+    # shellcheck disable=SC2086
+    kill ${pids} >/dev/null 2>&1 || true
+    sleep 1
+  fi
+}
+
+start_gitlab_port_forward() {
+  local candidates=("${GITLAB_LOCAL_PORT}" 18083 28083)
+  local port
+
+  for port in "${candidates[@]}"; do
+    stop_port_forward_if_running "kubectl port-forward -n gitlab svc/gitlab-webservice-default ${port}:8181"
+    free_local_port_if_busy "${port}"
+    kubectl port-forward -n gitlab svc/gitlab-webservice-default "${port}:8181" >/tmp/gitlab-pf.log 2>&1 &
+    sleep 3
+
+    if pgrep -f "kubectl port-forward -n gitlab svc/gitlab-webservice-default ${port}:8181" >/dev/null 2>&1; then
+      GITLAB_LOCAL_PORT="${port}"
+      log_info "GitLab port-forward active on localhost:${GITLAB_LOCAL_PORT}"
+      return 0
+    fi
+  done
+
+  log_error "Could not start GitLab port-forward on fallback ports."
+  tail -n 40 /tmp/gitlab-pf.log 2>/dev/null || true
+  exit 1
+}
+
+start_argocd_port_forward() {
+  local candidates=("${ARGOCD_LOCAL_PORT}" 18080 28080)
+  local port
+
+  for port in "${candidates[@]}"; do
+    stop_port_forward_if_running "kubectl port-forward -n argocd svc/argocd-server ${port}:443"
+    free_local_port_if_busy "${port}"
+    kubectl port-forward svc/argocd-server -n argocd "${port}:443" >/tmp/argocd-pf.log 2>&1 &
+    sleep 3
+
+    if pgrep -f "kubectl port-forward svc/argocd-server -n argocd ${port}:443" >/dev/null 2>&1; then
+      ARGOCD_LOCAL_PORT="${port}"
+      log_info "Argo CD port-forward active on localhost:${ARGOCD_LOCAL_PORT}"
+      return 0
+    fi
+  done
+
+  log_error "Could not start Argo CD port-forward on fallback ports."
+  tail -n 40 /tmp/argocd-pf.log 2>/dev/null || true
+  exit 1
+}
+
 install_argocd_client() {
   if command -v argocd >/dev/null 2>&1; then
     log_info "Argo CD CLI already installed"
@@ -107,6 +169,13 @@ create_cluster_and_namespaces() {
 }
 
 install_argocd() {
+  if [ "${FORCE_ARGOCD_APPLY}" != "true" ] && kubectl get deployment argocd-server -n argocd >/dev/null 2>&1; then
+    if kubectl wait deployment/argocd-server -n argocd --for=condition=Available --timeout=60s >/dev/null 2>&1; then
+      log_info "Argo CD already installed, skipping re-apply"
+      return
+    fi
+  fi
+
   log_info "Installing Argo CD in namespace 'argocd'..."
   kubectl apply --server-side --force-conflicts -n argocd \
     -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
@@ -119,6 +188,12 @@ install_argocd() {
 deploy_gitlab() {
   check_free_disk_space
 
+  if [ ! -f "${GITLAB_VALUES_FILE}" ]; then
+    log_error "Missing GitLab values file: ${GITLAB_VALUES_FILE}"
+    log_error "Expected default: bonus/confs/gitlab-values-light.yaml"
+    exit 1
+  fi
+
   local host_entry="127.0.0.1 gitlab.k3d.gitlab.com"
   if grep -q "${host_entry}" /etc/hosts; then
     log_info "Hosts entry already exists"
@@ -127,26 +202,46 @@ deploy_gitlab() {
     echo "${host_entry}" | sudo tee -a /etc/hosts >/dev/null
   fi
 
-  helm repo add gitlab https://charts.gitlab.io/ >/dev/null 2>&1 || true
-  helm repo update
+  if [ "${FORCE_GITLAB_UPGRADE}" = "true" ] || ! helm status gitlab -n gitlab >/dev/null 2>&1; then
+    helm repo add gitlab https://charts.gitlab.io/ >/dev/null 2>&1 || true
+    helm repo update
 
-  log_info "Installing GitLab Helm chart..."
-  helm upgrade --install gitlab gitlab/gitlab \
-    -n gitlab \
-    -f https://gitlab.com/gitlab-org/charts/gitlab/raw/master/examples/values-minikube-minimum.yaml \
-    --set global.hosts.domain=k3d.gitlab.com \
-    --set global.hosts.externalIP=0.0.0.0 \
-    --set global.hosts.https=false \
-    --set global.edition=ce \
-    --timeout 1200s
-  log_success "GitLab chart installed"
+    prepare_gitlab_resources_for_upgrade
+
+    log_info "Installing lightweight GitLab Helm chart profile..."
+    helm upgrade --install gitlab gitlab/gitlab \
+      -n gitlab \
+      -f "${GITLAB_VALUES_FILE}" \
+      --timeout 1200s
+    log_success "GitLab chart installed"
+  else
+    log_info "GitLab release already installed, skipping Helm upgrade"
+  fi
+
+  optimize_gitlab_for_low_memory
 
   log_info "Waiting for GitLab webservice pod readiness (max 20m)..."
   local deadline=$((SECONDS + 1200))
+  local dns_recoveries=0
+  local memory_recoveries=0
   while true; do
-    if kubectl get pods -n gitlab -l app=webservice 2>/dev/null | grep -q "Running"; then
-      if kubectl get pods -n gitlab -l app=webservice 2>/dev/null | awk 'NR>1 {print $2}' | grep -q "^2/2$"; then
+    if kubectl get pods -n gitlab -l app=webservice --no-headers 2>/dev/null | grep -q "Running"; then
+      if kubectl get pods -n gitlab -l app=webservice --no-headers 2>/dev/null | awk '{print $2}' | grep -Eq "1/1|2/2|3/3"; then
         break
+      fi
+    fi
+
+    if webservice_has_dns_pull_issue; then
+      if [ "${dns_recoveries}" -lt 2 ]; then
+        dns_recoveries=$((dns_recoveries + 1))
+        recover_webservice_dns_pull
+      fi
+    fi
+
+    if webservice_has_memory_scheduling_issue; then
+      if [ "${memory_recoveries}" -lt 2 ]; then
+        memory_recoveries=$((memory_recoveries + 1))
+        recover_webservice_memory_pressure
       fi
     fi
 
@@ -164,10 +259,126 @@ deploy_gitlab() {
   GITLAB_PASS=$(kubectl get secret gitlab-gitlab-initial-root-password -n gitlab -o jsonpath="{.data.password}" | base64 --decode)
   log_success "GitLab root password retrieved"
 
-  log_info "Starting background port-forward for GitLab UI/API (localhost:8083)..."
-  stop_port_forward_if_running "kubectl port-forward -n gitlab svc/gitlab-webservice-default 8083:8181"
-  kubectl port-forward -n gitlab svc/gitlab-webservice-default 8083:8181 >/tmp/gitlab-pf.log 2>&1 &
-  sleep 5
+  log_info "Starting background port-forward for GitLab UI/API..."
+  start_gitlab_port_forward
+  wait_for_gitlab_api
+}
+
+prepare_gitlab_resources_for_upgrade() {
+  if ! kubectl get namespace gitlab >/dev/null 2>&1; then
+    return
+  fi
+
+  log_info "Preparing existing GitLab deployments for Helm upgrade compatibility..."
+
+  if kubectl get deploy gitlab-webservice-default -n gitlab >/dev/null 2>&1; then
+    kubectl set resources deploy/gitlab-webservice-default -n gitlab --containers='*' \
+      --requests=cpu=2500m,memory=2500Mi --limits=cpu=3000m,memory=3Gi >/dev/null 2>&1 || true
+  fi
+
+  if kubectl get deploy gitlab-sidekiq-all-in-1-v2 -n gitlab >/dev/null 2>&1; then
+    kubectl set resources deploy/gitlab-sidekiq-all-in-1-v2 -n gitlab --containers='*' \
+      --requests=cpu=1000m,memory=2Gi --limits=cpu=1500m,memory=3Gi >/dev/null 2>&1 || true
+  fi
+}
+
+webservice_has_dns_pull_issue() {
+  local pod
+  pod="$(kubectl get pods -n gitlab -l app=webservice --no-headers 2>/dev/null | awk '$3 ~ /ErrImagePull|ImagePullBackOff/ {print $1; exit}')"
+  if [ -z "${pod}" ]; then
+    return 1
+  fi
+
+  if kubectl describe pod -n gitlab "${pod}" 2>/dev/null | grep -q "lookup registry.gitlab.com"; then
+    return 0
+  fi
+  return 1
+}
+
+recover_webservice_dns_pull() {
+  log_warn "Detected DNS image-pull failure for webservice. Restarting CoreDNS and retrying failed webservice pods..."
+
+  kubectl -n kube-system rollout restart deployment/coredns >/dev/null 2>&1 || true
+  kubectl -n kube-system rollout status deployment/coredns --timeout=180s >/dev/null 2>&1 || true
+
+  local failed_pods
+  failed_pods="$(kubectl get pods -n gitlab -l app=webservice --no-headers 2>/dev/null | awk '$3 ~ /ErrImagePull|ImagePullBackOff/ {print $1}')"
+  if [ -n "${failed_pods}" ]; then
+    # shellcheck disable=SC2086
+    kubectl delete pod -n gitlab ${failed_pods} >/dev/null 2>&1 || true
+  fi
+}
+
+webservice_has_memory_scheduling_issue() {
+  local pod
+  pod="$(kubectl get pods -n gitlab -l app=webservice --no-headers 2>/dev/null | awk '$3 == "Pending" {print $1; exit}')"
+  if [ -z "${pod}" ]; then
+    return 1
+  fi
+
+  if kubectl describe pod -n gitlab "${pod}" 2>/dev/null | grep -q "Insufficient memory"; then
+    return 0
+  fi
+  return 1
+}
+
+recover_webservice_memory_pressure() {
+  log_warn "Detected memory scheduling pressure. Re-applying low-memory GitLab tuning..."
+  optimize_gitlab_for_low_memory
+}
+
+optimize_gitlab_for_low_memory() {
+  log_info "Applying low-memory runtime tuning for GitLab..."
+
+  local hpas=(
+    gitlab-webservice-default
+    gitlab-sidekiq-all-in-1-v2
+    gitlab-kas
+    gitlab-gitlab-shell
+  )
+
+  local deployments=(
+    gitlab-webservice-default
+    gitlab-sidekiq-all-in-1-v2
+    gitlab-kas
+    gitlab-gitlab-shell
+  )
+
+  local hpa
+  for hpa in "${hpas[@]}"; do
+    if kubectl get hpa "${hpa}" -n gitlab >/dev/null 2>&1; then
+      kubectl delete hpa "${hpa}" -n gitlab >/dev/null 2>&1 || true
+    fi
+  done
+
+  local dep
+  for dep in "${deployments[@]}"; do
+    if kubectl get deploy "${dep}" -n gitlab >/dev/null 2>&1; then
+      kubectl scale deploy "${dep}" -n gitlab --replicas=1 >/dev/null 2>&1 || true
+    fi
+  done
+
+  if kubectl get deploy gitlab-webservice-default -n gitlab >/dev/null 2>&1; then
+    kubectl patch deploy gitlab-webservice-default -n gitlab --type merge -p \
+      '{"spec":{"strategy":{"type":"RollingUpdate","rollingUpdate":{"maxSurge":0,"maxUnavailable":1}}}}' >/dev/null 2>&1 || true
+    kubectl set resources deploy/gitlab-webservice-default -n gitlab --containers='*' \
+      --requests=cpu=150m,memory=384Mi --limits=cpu=800m,memory=2Gi >/dev/null 2>&1 || true
+  fi
+
+  if kubectl get deploy gitlab-sidekiq-all-in-1-v2 -n gitlab >/dev/null 2>&1; then
+    kubectl set resources deploy/gitlab-sidekiq-all-in-1-v2 -n gitlab --containers='*' \
+      --requests=cpu=100m,memory=256Mi --limits=cpu=500m,memory=768Mi >/dev/null 2>&1 || true
+  fi
+
+  if kubectl get deploy gitlab-kas -n gitlab >/dev/null 2>&1; then
+    kubectl set resources deploy/gitlab-kas -n gitlab --containers='*' \
+      --requests=cpu=50m,memory=64Mi --limits=cpu=250m,memory=256Mi >/dev/null 2>&1 || true
+  fi
+
+  if kubectl get deploy gitlab-gitlab-shell -n gitlab >/dev/null 2>&1; then
+    kubectl set resources deploy/gitlab-gitlab-shell -n gitlab --containers='*' \
+      --requests=cpu=50m,memory=64Mi --limits=cpu=250m,memory=256Mi >/dev/null 2>&1 || true
+  fi
 }
 
 generate_gitlab_pat() {
@@ -187,44 +398,84 @@ generate_gitlab_pat() {
 
 ensure_gitlab_project() {
   log_info "Ensuring GitLab project '${GITLAB_PROJECT}' exists..."
+  wait_for_gitlab_api
 
-  local check_url="http://localhost:8083/api/v4/projects/${GITLAB_USER}%2F${GITLAB_PROJECT}"
-  local create_url="http://localhost:8083/api/v4/projects"
+  local check_url="http://localhost:${GITLAB_LOCAL_PORT}/api/v4/projects/${GITLAB_USER}%2F${GITLAB_PROJECT}"
+  local create_url="http://localhost:${GITLAB_LOCAL_PORT}/api/v4/projects"
 
-  if curl -sf -H "PRIVATE-TOKEN: ${PAT}" "${check_url}" >/dev/null; then
+  if gitlab_api_retry GET "${check_url}" >/dev/null; then
     log_info "Project already exists"
   else
-    curl -sS -X POST \
-      -H "PRIVATE-TOKEN: ${PAT}" \
+    gitlab_api_retry POST "${create_url}" \
       -H "Content-Type: application/json" \
-      -d "{\"name\":\"${GITLAB_PROJECT}\",\"path\":\"${GITLAB_PROJECT}\",\"visibility\":\"public\"}" \
-      "${create_url}" >/dev/null
+      -d "{\"name\":\"${GITLAB_PROJECT}\",\"path\":\"${GITLAB_PROJECT}\",\"visibility\":\"public\"}" >/dev/null
     log_success "Project created"
   fi
 }
 
+wait_for_gitlab_api() {
+  log_info "Waiting for GitLab API readiness on localhost:${GITLAB_LOCAL_PORT}..."
+  local deadline=$((SECONDS + 300))
+  while true; do
+    local code
+    code="$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://localhost:${GITLAB_LOCAL_PORT}/users/sign_in" || true)"
+    if [ "${code}" = "200" ] || [ "${code}" = "302" ]; then
+      return 0
+    fi
+
+    if [ "${SECONDS}" -ge "${deadline}" ]; then
+      log_error "GitLab API/UI did not become ready in time."
+      tail -n 40 /tmp/gitlab-pf.log 2>/dev/null || true
+      exit 1
+    fi
+    sleep 5
+  done
+}
+
+gitlab_api_retry() {
+  local method="$1"
+  local url="$2"
+  shift 2
+
+  local attempts=0
+  while [ "${attempts}" -lt 30 ]; do
+    if curl -sf --max-time 10 -X "${method}" -H "PRIVATE-TOKEN: ${PAT}" "$@" "${url}"; then
+      return 0
+    fi
+    attempts=$((attempts + 1))
+    sleep 3
+  done
+  return 1
+}
+
 push_manifests_to_gitlab() {
   local workdir="/tmp/${GITLAB_PROJECT}-repo"
+  local remote_url="http://oauth2:${PAT}@localhost:${GITLAB_LOCAL_PORT}/${GITLAB_USER}/${GITLAB_PROJECT}.git"
   rm -rf "${workdir}"
   mkdir -p "${workdir}"
-
-  cp "${REPO_ROOT}/p3/confs/deployment.yaml" "${workdir}/"
-  cp "${REPO_ROOT}/p3/confs/service.yaml" "${workdir}/"
-
-  git config --global user.email "${GIT_USER_EMAIL}"
-  git config --global user.name "${GIT_USER_NAME}"
 
   pushd "${workdir}" >/dev/null
   git init
   git checkout -B main
+  git config user.email "${GIT_USER_EMAIL}"
+  git config user.name "${GIT_USER_NAME}"
+  git remote remove origin >/dev/null 2>&1 || true
+  git remote add origin "${remote_url}"
+
+  if git ls-remote --exit-code --heads origin main >/dev/null 2>&1; then
+    git fetch origin main
+    git reset --hard origin/main
+  fi
+
+  cp "${REPO_ROOT}/p3/confs/deployment.yaml" "${workdir}/"
+  cp "${REPO_ROOT}/p3/confs/service.yaml" "${workdir}/"
+
   git add .
   if git diff --cached --quiet; then
     log_info "No manifest changes to commit"
   else
     git commit -m "initial manifests"
   fi
-  git remote remove origin >/dev/null 2>&1 || true
-  git remote add origin "http://oauth2:${PAT}@localhost:8083/${GITLAB_USER}/${GITLAB_PROJECT}.git"
   git push -u origin main
   popd >/dev/null
 
@@ -232,15 +483,13 @@ push_manifests_to_gitlab() {
 }
 
 configure_argocd_and_deploy_app() {
-  log_info "Starting port-forward for Argo CD API (localhost:8080)..."
-  stop_port_forward_if_running "kubectl port-forward -n argocd svc/argocd-server 8080:443"
-  kubectl port-forward svc/argocd-server -n argocd 8080:443 >/tmp/argocd-pf.log 2>&1 &
-  sleep 5
+  log_info "Starting port-forward for Argo CD API..."
+  start_argocd_port_forward
 
   local admin_pw
   admin_pw=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
 
-  argocd login localhost:8080 --insecure --username admin --password "${admin_pw}"
+  argocd login "localhost:${ARGOCD_LOCAL_PORT}" --insecure --username admin --password "${admin_pw}"
   log_success "Logged into Argo CD"
 
   log_info "Applying Argo CD config and application manifests..."
@@ -257,7 +506,27 @@ wait_and_portforward_app() {
     sleep 5
   done
 
+  log_info "Waiting for a running pod behind service 'wil-playground'..."
+  local deadline=$((SECONDS + 300))
+  while true; do
+    if kubectl get endpoints wil-playground -n dev -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null | grep -q .; then
+      break
+    fi
+
+    if [ "${SECONDS}" -ge "${deadline}" ]; then
+      log_error "Timed out waiting for wil-playground endpoints."
+      kubectl get pods -n dev
+      kubectl describe svc wil-playground -n dev || true
+      exit 1
+    fi
+
+    kubectl get pods -n dev --no-headers 2>/dev/null || true
+    sleep 5
+  done
+
   log_info "Port-forwarding app to localhost:8888 (Ctrl+C to stop)..."
+  stop_port_forward_if_running "kubectl port-forward svc/wil-playground -n dev 8888:8888"
+  free_local_port_if_busy 8888
   kubectl port-forward svc/wil-playground -n dev 8888:8888
 }
 

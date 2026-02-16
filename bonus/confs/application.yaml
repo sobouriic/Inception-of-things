@@ -14,7 +14,7 @@ spec:
     namespace: dev
 
   syncPolicy:
-    syncOptions: #by default, ArgoCD does not create the destination namespace if it does not exist
+    syncOptions: 
       - CreateNamespace=true
 
     automated: #enable auto sync

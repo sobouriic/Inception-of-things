@@ -1,103 +1,64 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-### Uninstall color helpers (optional)
-RED="\033[0;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"; NC="\033[0m"
-log()   { echo -e "${BLUE}[INFO]${NC}  $1"; }
-warn()  { echo -e "${YELLOW}[WARN]${NC}  $1"; }
-error() { echo -e "${RED}[ERROR]${NC} $1"; }
+RED="\033[0;31m"
+GREEN="\033[0;32m"
+YELLOW="\033[0;33m"
+BLUE="\033[0;34m"
+NC="\033[0m"
 
-##############################
-# Remove k3d and Kubernetes
-##############################
+log_info()  { echo -e "${BLUE}[INFO]${NC}  $1"; }
+log_ok()    { echo -e "${GREEN}[OK]${NC}    $1"; }
+log_warn()  { echo -e "${YELLOW}[WARN]${NC}  $1"; }
 
-log "Deleting all k3d clusters"
-if command -v k3d >/dev/null 2>&1; then
-    k3d cluster delete --all || warn "Failed to delete k3d clusters"
-else
-    warn "k3d not found — skipping k3d cluster deletion"
-fi
+safe_kubectl_delete() {
+  if command -v kubectl >/dev/null 2>&1; then
+    kubectl "$@" --ignore-not-found >/dev/null 2>&1 || true
+  fi
+}
 
-log "Removing k3d binary"
-sudo rm -f /usr/local/bin/k3d
+safe_helm_uninstall() {
+  if command -v helm >/dev/null 2>&1; then
+    helm uninstall gitlab -n gitlab >/dev/null 2>&1 || true
+  fi
+}
 
-log "Removing Kubernetes config"
-rm -f ~/.kube/config
+kill_pf() {
+  local pattern="$1"
+  if pgrep -f "${pattern}" >/dev/null 2>&1; then
+    pkill -f "${pattern}" || true
+  fi
+}
 
-##############################
-# Remove Docker
-##############################
+main() {
+  log_info "Cleaning bonus resources (cluster + namespaces + local temp files)..."
 
-log "Stopping Docker"
-sudo systemctl stop docker || warn "Could not stop Docker"
+  kill_pf "kubectl port-forward -n gitlab svc/gitlab-webservice-default 8083:8181"
+  kill_pf "kubectl port-forward -n argocd svc/argocd-server 8080:443"
+  kill_pf "kubectl port-forward svc/wil-playground -n dev 8888:8888"
 
-log "Removing Docker containers, images, volumes"
-sudo docker rm -f $(docker ps -aq) 2>/dev/null || true
-sudo docker rmi -f $(docker images -aq) 2>/dev/null || true
-sudo docker volume prune -f || true
+  safe_helm_uninstall
 
-log "Uninstalling Docker packages"
-sudo apt-get purge -y docker-ce docker-ce-cli containerd.io docker.io || true
-sudo apt-get autoremove -y
-sudo rm -rf /var/lib/docker /etc/docker
+  safe_kubectl_delete delete application development -n argocd
+  safe_kubectl_delete delete -f bonus/confs/argo-cd.yaml -n argocd
+  safe_kubectl_delete delete namespace gitlab
+  safe_kubectl_delete delete namespace argocd
+  safe_kubectl_delete delete namespace dev
 
-##############################
-# Remove kubectl
-##############################
+  if command -v k3d >/dev/null 2>&1; then
+    k3d cluster delete bonus >/dev/null 2>&1 || true
+  else
+    log_warn "k3d not found, skipping cluster deletion"
+  fi
 
-log "Removing kubectl"
-sudo rm -f /usr/local/bin/kubectl
+  rm -f /tmp/gitlab_pat.txt /tmp/gitlab-pf.log /tmp/argocd-pf.log
+  rm -rf /tmp/sobouric-repo
 
-##############################
-# Remove Git
-##############################
+  if grep -q "127.0.0.1 gitlab.k3d.gitlab.com" /etc/hosts 2>/dev/null; then
+    sudo sed -i '/127.0.0.1 gitlab.k3d.gitlab.com/d' /etc/hosts || true
+  fi
 
-log "Removing Git"
-sudo apt-get purge -y git || true
-sudo apt-get autoremove -y
+  log_ok "Bonus cleanup completed"
+}
 
-##############################
-# Remove Helm and GitLab
-##############################
-
-log "Removing Helm"
-sudo rm -f /usr/local/bin/helm
-
-# If you installed Helm through package manager:
-sudo apt-get purge -y helm || true
-
-log "Uninstalling GitLab Helm release"
-# Uninstall GitLab helm release and its Kubernetes resources
-kubectl delete namespace gitlab --ignore-not-found || warn "namespace gitlab not found"
-helm uninstall gitlab -n gitlab --ignore-not-found || warn "GitLab release not found"
-# Delete leftover PVCs & secrets (may contain stateful data you want removed) :contentReference[oaicite:0]{index=0}
-kubectl delete pvc,secret -l release=gitlab --all --ignore-not-found || true
-
-##############################
-# Remove ArgoCD
-##############################
-
-log "Removing ArgoCD installation from Kubernetes"
-# Delete ArgoCD manifests installed by script
-kubectl delete -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml --ignore-not-found || warn "ArgoCD manifests might not exist"
-# Remove ArgoCD namespace
-kubectl delete namespace argocd --ignore-not-found || warn "ArgoCD namespace not found" :contentReference[oaicite:1]{index=1}
-
-log "Removing ArgoCD CLI"
-sudo rm -f /usr/local/bin/argocd
-
-##############################
-# Clean up hosts entry
-##############################
-
-log "Cleaning /etc/hosts entry for GitLab"
-sudo sed -i '/gitlab.k3d.gitlab.com/d' /etc/hosts
-
-##############################
-# Final cleanup
-##############################
-
-log "Auto-removing unused packages"
-sudo apt-get autoremove -y
-
-log "${GREEN}Uninstall complete!${NC}"
+main

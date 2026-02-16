@@ -14,6 +14,7 @@ This bonus extends Part 3 by using a **local GitLab** repository as Argo CD sour
 - `scripts/install.sh`: step 1, install/check required tools.
 - `scripts/deploy.sh`: step 2, deploy cluster + Argo CD + GitLab + app.
 - `scripts/clean.sh`: cleanup script.
+- `confs/gitlab-values-light.yaml`: lightweight GitLab Helm profile used by default.
 - `confs/application.yaml`: Argo CD `Application` pointing to local GitLab repo.
 - `confs/argo-cd.yaml`: Argo CD ConfigMap override.
 
@@ -36,14 +37,22 @@ bash bonus/scripts/deploy.sh
 ```
 
 Step 1 (`install.sh`) will:
-- install/check Docker, k3d, kubectl, Helm, Argo CD
+- install/check Docker, Git, k3d, kubectl, Helm
 
 Step 2 (`deploy.sh`) will:
 - create namespaces `argocd`, `dev`, `gitlab`
-- install local GitLab in `gitlab`
+- install local GitLab in `gitlab` with a lightweight profile (no bundled nginx ingress, runner, registry, prometheus)
+- auto-apply low-memory tuning (single replicas + reduced requests on heavy GitLab deployments)
+- auto-recover common webservice pull failures (CoreDNS restart + failed pod re-create)
 - create/update GitLab project `root/sobouric`
 - push `p3/confs/deployment.yaml` and `p3/confs/service.yaml` to that repo
 - apply `bonus/confs/argo-cd.yaml` and `bonus/confs/application.yaml`
+
+Optional: use your own GitLab values file:
+
+```bash
+GITLAB_VALUES_FILE=/path/to/values.yaml bash bonus/scripts/deploy.sh
+```
 
 ## Git identity used for bonus
 

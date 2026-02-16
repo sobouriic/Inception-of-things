@@ -1,0 +1,26 @@
+global:
+  edition: ce
+  hosts:
+    domain: k3d.gitlab.com
+    externalIP: 0.0.0.0
+    https: false
+  ingress:
+    configureCertmanager: false
+  minio:
+    enabled: true
+
+nginx-ingress:
+  enabled: false
+
+prometheus:
+  install: false
+
+gitlab-runner:
+  install: false
+
+registry:
+  enabled: false
+
+gitlab:
+  kas:
+    enabled: false
