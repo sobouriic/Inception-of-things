@@ -36,7 +36,182 @@ vagrant ssh sobouricS -c "ip a show eth1"
 vagrant ssh sobouricSW -c "ip a show eth1"
 vagrant ssh sobouricS -c "sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes -o wide"
 ```
+# Part 2: K3s and three simple applications
 
+## 📌 Overview
+
+This Part  provisions a virtual machine using Vagrant and installs a lightweight Kubernetes cluster using K3s.
+
+It deploys three NGINX applications and exposes them using the Traefik Ingress Controller.
+
+Each application serves a custom HTML page using Kubernetes ConfigMaps.
+
+---
+
+## 🏗 Architecture
+
+- 1 Virtual Machine (CentOS 8)
+- K3s (v1.21.4+k3s1)
+- Traefik (default ingress controller in K3s)
+- 3 Deployments
+- 3 Services
+- 1 Ingress
+- 3 ConfigMaps (custom HTML pages)
+
+---
+
+## 📂 Structure
+
+.
+├── Vagrantfile
+├── scripts/
+│ └── install.sh
+├── confs/
+│ ├── deployment.yaml
+│ ├── app1.html
+│ ├── app2.html
+│ └── app3.html
+
+
+
+---
+
+## 🚀 How It Works
+
+### 1️⃣ Vagrant
+
+The Vagrantfile:
+
+- Creates a VM using `generic/centos8`
+- Sets a private IP: `192.168.56.110`
+- Installs required tools (curl, net-tools)
+- Copies configuration files into the VM
+- Runs the installation script
+
+---
+
+### 2️⃣ install.sh Script
+
+The script:
+
+- Adds K3s binaries to PATH
+- Installs K3s (v1.21.4+k3s1)
+- Creates ConfigMaps from HTML files
+- Deploys Kubernetes resources
+- Configures useful aliases
+
+---
+
+### 3️⃣ Kubernetes Resources
+
+Defined in `deployment.yaml`.
+
+#### ✔ Deployments
+
+- app1 (1 replica)
+- app2 (3 replicas)
+- app3 (1 replica)
+
+Each runs:
+
+nginx:alpine
+
+
+Each mounts a ConfigMap as:
+
+/usr/share/nginx/html/index.html
+
+
+---
+
+#### ✔ Services
+
+- app1-service
+- app2-service
+- app3-service
+
+Each service exposes port 80 internally (ClusterIP).
+
+---
+
+#### ✔ Ingress
+
+The Ingress routes traffic based on host:
+
+| Host       | Service        |
+|------------|---------------|
+| app1.com   | app1-service  |
+| app2.com   | app2-service  |
+| default    | app3-service  |
+
+Traefik handles all routing.
+
+---
+
+## ⚙ Installation
+
+### Step 1: Start the VM
+
+```bash
+vagrant up
+
+Step 2: SSH into the VM
+
+vagrant ssh
+
+Step 3: Verify Deployment
+
+kubectl get nodes
+kubectl get pods
+kubectl get services
+kubectl get ingress
+
+🌐 Access Applications
+
+Add entries to your local /etc/hosts:
+
+192.168.56.110 app1.com
+192.168.56.110 app2.com
+192.168.56.110 app3.com
+
+Then open in your browser:
+
+http://app1.com
+http://app2.com
+http://app3.com
+
+🧪 Useful Commands
+
+Check pods:
+
+kubectl get pods -o wide
+
+Describe ingress:
+
+kubectl describe ingress apps-ingress
+
+Check services:
+
+kubectl get svc
+
+📌 Notes
+
+    App2 runs 3 replicas to demonstrate scaling.
+
+    App3 is the default backend when no host matches.
+
+    K3s automatically installs Traefik as the ingress controller.
+
+✅ Expected Result
+
+    All pods running
+
+    Ingress routing correctly
+
+    Each domain serving its custom HTML page
+
+
+---
 ## Part 3 (`p3`) - K3d + Argo CD
 
 ### What it does
