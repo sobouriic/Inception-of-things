@@ -10,6 +10,7 @@ echo "[SERVER] Preparing system packages..."
 dnf makecache
 dnf install -y curl iproute net-tools
 
+#to make nodes communicate
 systemctl disable --now firewalld >/dev/null 2>&1 || true
 
 if [ -n "${K3S_SHARED_TOKEN:-}" ]; then
@@ -33,7 +34,7 @@ curl -sfL https://get.k3s.io | \
   sh -
 
 if [ -f /var/lib/rancher/k3s/server/node-token ]; then
-  umask 077
+  umask 077 #make it private
   cp /var/lib/rancher/k3s/server/node-token "${TOKEN_FILE}"
   chmod 600 "${TOKEN_FILE}"
   umask 022
@@ -63,6 +64,7 @@ if ! PATH="/usr/local/bin:${PATH}" command -v kubectl >/dev/null 2>&1; then
   echo "[SERVER] Installing kubectl (fallback)..."
   KUBECTL_VERSION="$(curl -fsSL https://dl.k8s.io/release/stable.txt)"
   TMP_KUBECTL="$(mktemp /tmp/kubectl.XXXXXX)"
+  
   curl -fsSL -o "${TMP_KUBECTL}" "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
   install -m 0755 "${TMP_KUBECTL}" /usr/local/bin/kubectl
   rm -f "${TMP_KUBECTL}"

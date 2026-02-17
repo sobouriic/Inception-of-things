@@ -1,99 +1,67 @@
-# Inception of Things - Part 1 (K3s + Vagrant)
+# Inception of Things
 
-This folder sets up 2 VMs with Vagrant:
-- `sobouricS` (server/control-plane) -> `192.168.56.110`
-- `sobouricSW` (agent/worker) -> `192.168.56.111`
+This repository contains my implemented parts:
+- `p1`: K3s + Vagrant (2 VMs)
+- `p3`: K3d + Argo CD (GitOps from GitHub)
+- `bonus`: local GitLab + Argo CD (GitOps from local GitLab)
 
-Both machines run CentOS Stream 9 and are provisioned with K3s.
+## Part 1 (`p1`) - K3s + Vagrant
 
-## Files
+### What it does
+- Creates 2 CentOS Stream 9 VMs:
+  - `sobouricS` (server/control plane) at `192.168.56.110`
+  - `sobouricSW` (agent/worker) at `192.168.56.111`
+- Installs K3s server on `sobouricS`
+- Installs K3s agent on `sobouricSW`
+- Joins both nodes in one cluster
 
-- `Vagrantfile` - defines both VMs and network
-- `scripts/install_k3s_server.sh` - installs and configures K3s server
-- `scripts/install_k3s_agent.sh` - installs and configures K3s agent
+### Files
+- `p1/Vagrantfile`
+- `p1/scripts/install_k3s_server.sh`
+- `p1/scripts/install_k3s_agent.sh`
+- `p1/scripts/clean-vagrant.sh`
+- `p1/confs/k3s_token`
 
-## Run
-
-From this folder:
-
+### Run
 ```bash
-cd ~/Desktop/Inception-of-things/p1
-vagrant destroy -f
+cd p1
 vagrant up
 ```
 
-## Mandatory Checks (Evaluation)
-
-### 1) SSH access to both VMs
-
-```bash
-vagrant ssh sobouricS
-vagrant ssh sobouricSW
-```
-
-### 2) Hostnames
-
+### Check
 ```bash
 vagrant ssh sobouricS -c "hostname"
 vagrant ssh sobouricSW -c "hostname"
-```
-
-Expected:
-- `sobouricS`
-- `sobouricSW`
-
-### 3) `eth1` IP addresses
-
-```bash
 vagrant ssh sobouricS -c "ip a show eth1"
 vagrant ssh sobouricSW -c "ip a show eth1"
+vagrant ssh sobouricS -c "sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes -o wide"
 ```
 
-Expected:
-- server has `192.168.56.110`
-- worker has `192.168.56.111`
+## Part 3 (`p3`) - K3d + Argo CD
 
-### 4) Cluster has both nodes
+### What it does
+- Installs required tools (Docker, kubectl, k3d)
+- Creates a k3d cluster
+- Creates `argocd` and `dev` namespaces
+- Installs Argo CD in `argocd`
+- Applies Argo CD `Application` that deploys manifests from GitHub into `dev`
+- Exposes app on local `http://localhost:8888`
 
-Run on server:
-
-```bash
-vagrant ssh sobouricS -c "sudo /usr/local/bin/kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes -o wide"
-```
-
-Expected: 2 nodes in `Ready` state (`sobourics` and `sobouricsw`).
-
-## Troubleshooting
-
-- Vagrant lock error:
-  - Find old process: `ps -ef | grep -E "vagrant|ruby"`
-  - Kill stuck PID, then retry `vagrant up` / `vagrant destroy -f`
-- If cluster shows only one node:
-  - Re-provision worker: `vagrant provision sobouricSW`
-  - Check agent logs: `vagrant ssh sobouricSW -c "sudo journalctl -u k3s-agent -n 100 --no-pager"`
-
-# Part 3 (K3d + Argo CD)
-
-This part runs a local K3d cluster, installs Argo CD, and deploys the app in namespace `dev`.
-
-## Repository content (Part 3)
-
-- `p3/confs/deployment.yaml`
-- `p3/confs/service.yaml`
+### Files
 - `p3/confs/namespace.yaml`
 - `p3/confs/application.yaml`
+- `p3/confs/deployment.yaml`
+- `p3/confs/service.yaml`
 - `p3/scripts/install.sh`
 - `p3/scripts/cluster.sh`
 - `p3/scripts/run_all.sh`
 - `p3/scripts/verify.sh`
 - `p3/scripts/argocd_ui.sh`
+- `p3/scripts/clean.sh`
 
-Argo CD source is defined in `p3/confs/application.yaml`.
-
-## Run from scratch
-
+### Run
 ```bash
-cd ~/Desktop/Inception-of-things/p3
+cd p3
 bash scripts/install.sh
 newgrp docker
 bash scripts/cluster.sh
@@ -101,97 +69,85 @@ bash scripts/verify.sh
 ```
 
 Shortcut:
-
 ```bash
-cd ~/Desktop/Inception-of-things/p3
+cd p3
 bash scripts/run_all.sh
 ```
 
-## Access Argo CD UI
-
+### Argo CD UI
+```bash
+bash scripts/argocd_ui.sh
+```
+Or manually:
 ```bash
 kubectl port-forward svc/argocd-server -n argocd 8080:443
 ```
 
-Open `https://localhost:8080` and login with:
-- username: `admin`
-- password:
-
-```bash
-kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
-```
-
-## Mandatory v1 -> v2 demo
-
-1. Update the app image tag in `p3/confs/deployment.yaml`:
-   - from `wil42/playground:v1`
-   - to `wil42/playground:v2`
-2. Commit and push:
-
-```bash
-cd ~/Desktop/Inception-of-things
-git add p3/confs/deployment.yaml
-git commit -m "p3: switch app to v2"
-git push
-```
-
-3. Verify sync and app response:
-
+### Mandatory demo (`v1 -> v2`)
+1. Edit `p3/confs/deployment.yaml` image from `wil42/playground:v1` to `wil42/playground:v2`
+2. Commit and push to the Git repository used by Argo CD
+3. Verify sync and result:
 ```bash
 kubectl get applications -n argocd -o wide
 curl http://localhost:8888/
 ```
 
-# Bonus - Local GitLab + Argo CD
+## Bonus (`bonus`) - Local GitLab + Argo CD
 
-Goal: keep the Part 3 flow, but use a local GitLab repository as Argo CD source.
+### What it does
+- Deploys local GitLab in namespace `gitlab`
+- Keeps Part 3 flow working with `argocd` and `dev`
+- Pushes app manifests to local GitLab repository
+- Switches Argo CD application source to local GitLab
+- Keeps GitOps version switch (`v1 -> v2`) working
 
-## Concept
+### Files
+- `bonus/confs/gitlab-values-light.yaml`
+- `bonus/confs/argo-cd.yaml`
+- `bonus/confs/application.yaml`
+- `bonus/scripts/install.sh`
+- `bonus/scripts/deploy.sh`
+- `bonus/scripts/verify.sh`
+- `bonus/scripts/clean.sh`
 
-- Part 3 proves GitOps with GitHub.
-- Bonus proves the same GitOps flow with local GitLab.
-- Argo CD must sync from local GitLab, then apply changes (v1 -> v2) after commit/push.
+### Prerequisite
+Part 3 should work first.
 
-## Bonus files
-
-- `bonus/scripts/install.sh`: installs Helm and required tools.
-- `bonus/scripts/setup_gitlab.sh`: installs local GitLab in namespace `gitlab`.
-- `bonus/scripts/switch_argocd_to_gitlab.sh`: registers repo credentials and switches Argo CD source.
-- `bonus/scripts/verify.sh`: runs bonus checks.
-- `bonus/confs/gitlab-namespace.yaml`: namespace for GitLab.
-- `bonus/confs/application-gitlab-template.yaml`: Argo CD Application template for GitLab source.
-
-## Run order
-
-1. Complete Part 3 first.
-2. Install bonus tools:
-
+### Run
 ```bash
 bash bonus/scripts/install.sh
+bash bonus/scripts/deploy.sh
 ```
 
-3. Install local GitLab:
-
+Optional:
 ```bash
-bash bonus/scripts/setup_gitlab.sh
+GITLAB_VALUES_FILE=/path/to/custom-values.yaml bash bonus/scripts/deploy.sh
 ```
 
-4. In GitLab UI, create a project and push your app manifests.
-5. Create a GitLab token with `read_repository` scope.
-6. Switch Argo CD to GitLab:
-
-```bash
-bash bonus/scripts/switch_argocd_to_gitlab.sh <gitlab_repo_url> <gitlab_username> <gitlab_token>
-```
-
-7. Verify:
-
+### Verify
 ```bash
 bash bonus/scripts/verify.sh
 curl http://localhost:8888/
 ```
 
-8. Demo update:
-- change image tag `v1 -> v2` in the GitLab repo
-- commit/push
-- confirm Argo CD syncs and app is updated
+### Bonus demo (`v1 -> v2`)
+1. Update image tag in local GitLab repo from `v1` to `v2`
+2. Commit and push
+3. Confirm Argo CD sync and app output update
+
+## Cleanup
+
+Part 1:
+```bash
+bash p1/scripts/clean-vagrant.sh
+```
+
+Part 3:
+```bash
+bash p3/scripts/clean.sh
+```
+
+Bonus:
+```bash
+bash bonus/scripts/clean.sh
+```
