@@ -21,8 +21,9 @@ GITLAB_LOCAL_PORT="${GITLAB_LOCAL_PORT:-8083}"
 ARGOCD_LOCAL_PORT="${ARGOCD_LOCAL_PORT:-8080}"
 FORCE_ARGOCD_APPLY="${FORCE_ARGOCD_APPLY:-false}"
 FORCE_GITLAB_UPGRADE="${FORCE_GITLAB_UPGRADE:-false}"
-GITLAB_PROJECT="sobouric"
+GITLAB_PROJECT="${GITLAB_PROJECT:-sobouric}"
 GITLAB_USER="root"
+GITLAB_ROOT_PASSWORD="sobouric123!"
 GIT_USER_NAME="sobouric"
 GIT_USER_EMAIL="${GIT_USER_EMAIL:-socarlett03@gmail.com}"
 MIN_FREE_GB="${MIN_FREE_GB:-12}"
@@ -264,6 +265,16 @@ deploy_gitlab() {
   wait_for_gitlab_api
 }
 
+set_gitlab_root_password() {
+  log_info "Setting deterministic GitLab root password..."
+
+  kubectl wait pod -n gitlab -l app=toolbox --for=condition=Ready --timeout=600s >/dev/null
+  kubectl exec -n gitlab deploy/gitlab-toolbox -- env NEW_ROOT_PASSWORD="${GITLAB_ROOT_PASSWORD}" bash -lc \
+    'gitlab-rails runner '\''u=User.find_by_username("root"); abort("root user not found") unless u; u.password=ENV["NEW_ROOT_PASSWORD"]; u.password_confirmation=ENV["NEW_ROOT_PASSWORD"]; u.save!; puts "root password updated"'\''' >/dev/null
+
+  log_success "GitLab root password is set for user 'root'"
+}
+
 prepare_gitlab_resources_for_upgrade() {
   if ! kubectl get namespace gitlab >/dev/null 2>&1; then
     return
@@ -396,6 +407,18 @@ generate_gitlab_pat() {
   log_success "GitLab PAT ready"
 }
 
+configure_git_credentials() {
+  log_info "Configuring local Git credentials for GitLab HTTP access..."
+  git config --global credential.helper store
+
+  printf "protocol=http\nhost=localhost:%s\nusername=%s\npassword=%s\n\n" \
+    "${GITLAB_LOCAL_PORT}" "${GITLAB_USER}" "${PAT}" | git credential approve
+  printf "protocol=http\nhost=gitlab.k3d.gitlab.com\nusername=%s\npassword=%s\n\n" \
+    "${GITLAB_USER}" "${PAT}" | git credential approve
+
+  log_success "Git credentials stored for localhost:${GITLAB_LOCAL_PORT}"
+}
+
 ensure_gitlab_project() {
   log_info "Ensuring GitLab project '${GITLAB_PROJECT}' exists..."
   wait_for_gitlab_api
@@ -450,7 +473,7 @@ gitlab_api_retry() {
 
 push_manifests_to_gitlab() {
   local workdir="/tmp/${GITLAB_PROJECT}-repo"
-  local remote_url="http://oauth2:${PAT}@localhost:${GITLAB_LOCAL_PORT}/${GITLAB_USER}/${GITLAB_PROJECT}.git"
+  local remote_url="http://localhost:${GITLAB_LOCAL_PORT}/${GITLAB_USER}/${GITLAB_PROJECT}.git"
   rm -rf "${workdir}"
   mkdir -p "${workdir}"
 
@@ -480,6 +503,7 @@ push_manifests_to_gitlab() {
   popd >/dev/null
 
   log_success "Manifests pushed to local GitLab"
+  log_info "Repo URL: http://localhost:${GITLAB_LOCAL_PORT}/${GITLAB_USER}/${GITLAB_PROJECT}.git"
 }
 
 configure_argocd_and_deploy_app() {
@@ -543,7 +567,9 @@ main() {
   install_argocd
   install_argocd_client
   deploy_gitlab
+  set_gitlab_root_password
   generate_gitlab_pat
+  configure_git_credentials
   ensure_gitlab_project
   push_manifests_to_gitlab
   configure_argocd_and_deploy_app

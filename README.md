@@ -275,6 +275,7 @@ curl http://localhost:8888/
 - Pushes app manifests to local GitLab repository
 - Switches Argo CD application source to local GitLab
 - Keeps GitOps version switch (`v1 -> v2`) working
+- Sets GitLab root password automatically during deploy
 
 ### Files
 - `bonus/confs/gitlab-values-light.yaml`
@@ -298,6 +299,15 @@ Optional:
 ```bash
 GITLAB_VALUES_FILE=/path/to/custom-values.yaml bash bonus/scripts/deploy.sh
 ```
+
+Optional (custom GitLab project name):
+```bash
+GITLAB_PROJECT=test bash bonus/scripts/deploy.sh
+```
+
+### GitLab login
+- URL: `http://localhost:8083`
+- Username: `root`
 
 ### Verify
 ```bash
