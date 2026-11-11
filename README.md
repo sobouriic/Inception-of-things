@@ -1,5 +1,59 @@
 # Inception of Things
+## 📖 Project Overview
 
+**Inception of Things (IoT)** is a DevOps and system administration project developed as part of the **42 Network (1337 Coding School)** after core.
+
+The goal of this project is to explore **container orchestration, Kubernetes infrastructure, and GitOps practices** by building and managing lightweight Kubernetes clusters in different environments.
+
+Throughout the project, we learn how to automate infrastructure provisioning, deploy containerized applications, manage communication between services, and implement continuous deployment using Git repositories as the source of truth.
+
+The project is divided into three mandatory parts and an optional bonus:
+
+- **Part 1 — K3s and Vagrant:** Set up a lightweight Kubernetes cluster consisting of two virtual machines: one server (control plane) and one worker (agent).
+- **Part 2 — K3s and Applications:** Deploy three NGINX web applications inside a K3s cluster and configure an Ingress controller to route requests to the appropriate application.
+- **Part 3 — K3d and Argo CD:** Create a containerized Kubernetes cluster using K3d and implement a GitOps workflow with Argo CD, automatically synchronizing application deployments with a GitHub repository.
+- **Bonus — GitLab and Argo CD:** Extend the GitOps workflow by hosting a local GitLab instance and using it as the source repository for Argo CD deployments.
+
+### 🎯 Learning Objectives
+
+- Understand Kubernetes architecture and the differences between control-plane and worker nodes.
+- Automate virtual machine provisioning with Vagrant.
+- Deploy and manage containerized applications using K3s and K3d.
+- Work with Kubernetes resources such as Pods, Deployments, Services, ConfigMaps, and Ingress.
+- Understand service discovery, load balancing, and application scaling.
+- Implement GitOps-based continuous deployment using Argo CD.
+- Manage application versions and deployments through GitHub and GitLab.
+- Gain hands-on experience with DevOps tools and infrastructure automation.
+
+### 🛠️ Technologies Used
+
+| Technology | Purpose |
+|---|---|
+| **Vagrant** | Virtual machine provisioning and automation |
+| **K3s** | Lightweight Kubernetes distribution |
+| **K3d** | Running K3s clusters inside Docker containers |
+| **Docker** | Containerization |
+| **Kubernetes** | Container orchestration |
+| **kubectl** | Kubernetes cluster management |
+| **NGINX** | Web server for sample applications |
+| **Traefik** | Ingress controller and HTTP routing |
+| **Argo CD** | GitOps continuous deployment |
+| **GitHub** | Remote Git repository for application manifests |
+| **GitLab** | Locally hosted Git repository for the bonus |
+| **Bash** | Installation, provisioning, and verification scripts |
+
+### 📂 Project Structure
+
+```text
+Inception-of-Things/
+├── p1/       # K3s cluster with two Vagrant VMs
+├── p2/       # Three applications with K3s and Ingress
+├── p3/       # GitOps deployment with K3d and Argo CD
+├── bonus/    # Local GitLab integration with Argo CD
+└── README.md
+```
+
+Each part focuses on a different aspect of Kubernetes and DevOps, progressing from basic cluster setup to automated application deployment and GitOps workflows.
 This repository contains my implemented parts:
 - `p1`: K3s + Vagrant (2 VMs)
 - `p3`: K3d + Argo CD (GitOps from GitHub)
